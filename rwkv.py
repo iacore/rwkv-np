@@ -1,5 +1,6 @@
 import numpy as np
 import numba
+from tqdm import tqdm
 from tokenizers import Tokenizer
 from safetensors import safe_open
 
@@ -119,10 +120,9 @@ MODEL_FILE = "RWKV-4-Pile-430M-20220808-8066.safetensors"
 N_LAYER = 24
 N_EMBD = 1024
 
-print(f"\nLoading {MODEL_FILE}")
 weights_safe = safe_open(MODEL_FILE, "numpy")
 weights = {}
-for k in weights_safe.keys():
+for k in tqdm(weights_safe.keys(), desc="Loading model"):
     weights[k] = weights_safe.get_tensor(k)
     if ".time_" in k:
         weights[k] = weights[k].squeeze()
@@ -131,16 +131,13 @@ for k in weights_safe.keys():
 # Available at https://github.com/BlinkDL/ChatRWKV/blob/main/20B_tokenizer.json
 tokenizer = Tokenizer.from_file("20B_tokenizer.json")
 
-print()
-print(f"Preprocessing context")
-
-context = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
+prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
 
 state = np.zeros((N_LAYER, 4, N_EMBD), dtype=np.float32)
-for token in tokenizer.encode(context).ids:
+for token in tqdm(tokenizer.encode(prompt).ids, desc="feeding prompt"):
     probs, state = RWKV(weights, token, state)
 
-print(context, end="")
+print(prompt, end="")
 for i in range(100):
     token = sample_probs(probs)
     print(tokenizer.decode([token]), end="", flush=True)
