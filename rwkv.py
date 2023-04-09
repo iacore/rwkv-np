@@ -1,15 +1,24 @@
 import numpy as np
+import numba
 from tokenizers import Tokenizer
 from safetensors import safe_open
 
-layer_norm = lambda x, w, b: (x - np.mean(x)) / np.std(x) * w + b
+# def trace_shape(*args):
+#     print("trace_shape", [arg.shape for arg in args])
+
+jit = numba.jit(nopython=True, cache=True)
+
 exp = np.exp
-sigmoid = lambda x: 1 / (1 + exp(-x))
+layer_norm = jit(lambda x, w, b: (x - np.mean(x)) / np.std(x) * w + b)
+sigmoid = jit(lambda x: 1 / (1 + exp(-x)))
 
 
+@jit
 def time_mixing(
     x, last_x, last_num, last_den, decay, bonus, mix_k, mix_v, mix_r, Wk, Wv, Wr, Wout
 ):
+    # trace_shape(x, last_x, last_num, last_den, decay, bonus, mix_k, mix_v, mix_r, Wk, Wv, Wr, Wout)
+
     k = Wk @ (x * mix_k + last_x * (1 - mix_k))
     v = Wv @ (x * mix_v + last_x * (1 - mix_v))
     r = Wr @ (x * mix_r + last_x * (1 - mix_r))
@@ -23,6 +32,7 @@ def time_mixing(
     return Wout @ rwkv, (x, num, den)
 
 
+@jit
 def channel_mixing(x, last_x, mix_k, mix_r, Wk, Wr, Wv):
     k = Wk @ (x * mix_k + last_x * (1 - mix_k))
     r = Wr @ (x * mix_r + last_x * (1 - mix_r))
@@ -105,16 +115,17 @@ def sample_probs(probs, temperature=1.0, top_p=0.85):
 
 
 # converted using `convert.py` in this repo
-MODEL_FILE = 'RWKV-4-Pile-430M-20220808-8066.safetensors'
+MODEL_FILE = "RWKV-4-Pile-430M-20220808-8066.safetensors"
 N_LAYER = 24
 N_EMBD = 1024
 
-print(f'\nLoading {MODEL_FILE}')
+print(f"\nLoading {MODEL_FILE}")
 weights_safe = safe_open(MODEL_FILE, "numpy")
 weights = {}
 for k in weights_safe.keys():
     weights[k] = weights_safe.get_tensor(k)
-    if '.time_' in k: weights[k] = weights[k].squeeze()
+    if ".time_" in k:
+        weights[k] = weights[k].squeeze()
 
 
 # Available at https://github.com/BlinkDL/ChatRWKV/blob/main/20B_tokenizer.json
