@@ -155,7 +155,7 @@ if __name__ == "__main__":
     # Available at https://github.com/BlinkDL/ChatRWKV/blob/main/20B_tokenizer.json
     tokenizer = Tokenizer.from_file("20B_tokenizer.json")
 
-    prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
+    prompt = open("prompt_math.md").read()
 
     with shelve.open(
         f"__pycache__/rwkv.{model.n_embd}-{model.n_layer}.prompt_cache.shelf"
