@@ -2,7 +2,6 @@ import numpy as np
 import numba
 from tqdm import tqdm
 from tokenizers import Tokenizer
-from safetensors import safe_open
 
 # def trace_shape(*args):
 #     print("trace_shape", [arg.shape for arg in args])
@@ -41,9 +40,38 @@ def channel_mixing(x, last_x, mix_k, mix_r, Wk, Wr, Wv):
     return sigmoid(r) * vk, x
 
 
-def RWKV(model, token, state):
+from typing import NamedTuple
+
+
+class Model(NamedTuple):
+    tensors: dict[str, np.array]
+    n_embd: int
+    n_layer: int
+
+    @staticmethod
+    def load_safetensors(file: str) -> "Model":
+        from safetensors import safe_open
+
+        tensors_safe = safe_open(file, "numpy")
+        tensors = {}
+        for k in tqdm(tensors_safe.keys(), desc="Loading model"):
+            tensors[k] = tensors_safe.get_tensor(k)
+            if ".time_" in k:
+                tensors[k] = tensors[k].squeeze()
+
+        n_embd = int(tensors["ln_out.weight"].shape[0])
+        n_layer = 0
+        while f"blocks.{n_layer}.ln2.weight" in tensors:
+            n_layer += 1
+
+        return Model(tensors=tensors, n_embd=n_embd, n_layer=n_layer)
+
+
+def RWKV(model: Model, token, state):
+    tensors = model.tensors
+
     def p(key):
-        return model[key]
+        return tensors[key]
 
     def p_ln(prefix):
         return [
@@ -85,7 +113,7 @@ def RWKV(model, token, state):
     x = p("emb.weight")[token]
     x = layer_norm(x, *p_ln("blocks.0.ln0"))
 
-    for i in range(N_LAYER):
+    for i in range(model.n_layer):
         x_ = layer_norm(x, *p_ln(f"blocks.{i}.ln1"))
         dx, state[i][:3] = time_mixing(x_, *state[i][:3], *p_att(f"blocks.{i}.att"))
         x = x + dx
@@ -115,30 +143,24 @@ def sample_probs(probs, temperature=1.0, top_p=0.85):
     return np.random.choice(a=len(probs), p=probs / np.sum(probs))
 
 
-# converted using `convert.py` in this repo
-MODEL_FILE = "RWKV-4-Pile-430M-20220808-8066.safetensors"
-N_LAYER = 24
-N_EMBD = 1024
+if __name__ == "__main__":
+    # converted using `convert.py` in this repo
+    MODEL_FILE = "RWKV-4-Pile-430M-20220808-8066.safetensors"
 
-weights_safe = safe_open(MODEL_FILE, "numpy")
-weights = {}
-for k in tqdm(weights_safe.keys(), desc="Loading model"):
-    weights[k] = weights_safe.get_tensor(k)
-    if ".time_" in k:
-        weights[k] = weights[k].squeeze()
+    model = Model.load_safetensors(MODEL_FILE)
 
+    # Available at https://github.com/BlinkDL/ChatRWKV/blob/main/20B_tokenizer.json
+    tokenizer = Tokenizer.from_file("20B_tokenizer.json")
 
-# Available at https://github.com/BlinkDL/ChatRWKV/blob/main/20B_tokenizer.json
-tokenizer = Tokenizer.from_file("20B_tokenizer.json")
+    prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
 
-prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
+    state = np.zeros((model.n_layer, 4, model.n_embd), dtype=np.float32)
+    for token in tqdm(tokenizer.encode(prompt).ids, desc="Feeding prompt"):
+        probs, state = RWKV(model, token, state)
 
-state = np.zeros((N_LAYER, 4, N_EMBD), dtype=np.float32)
-for token in tqdm(tokenizer.encode(prompt).ids, desc="feeding prompt"):
-    probs, state = RWKV(weights, token, state)
-
-print(prompt, end="")
-for i in range(100):
-    token = sample_probs(probs)
-    print(tokenizer.decode([token]), end="", flush=True)
-    probs, state = RWKV(weights, token, state)
+    print(prompt, end="")
+    while True:
+        token = sample_probs(probs, temperature=1, top_p=0.8)
+        word = tokenizer.decode([token])
+        print(word, end="", flush=True)
+        probs, state = RWKV(model, token, state)
