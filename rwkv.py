@@ -50,14 +50,14 @@ class Model(NamedTuple):
 
     @staticmethod
     def load_safetensors(file: str) -> "Model":
-        from safetensors import safe_open
+        from safetensors.numpy import load_file
 
-        tensors = {}
-        with safe_open(file, "numpy") as tensors_safe:
-            for k in tqdm(tensors_safe.keys(), desc="Loading model"):
-                tensors[k] = tensors_safe.get_tensor(k)
-                if ".time_" in k:
-                    tensors[k] = tensors[k].squeeze()
+        tensors = load_file(file)
+
+        for k in tensors.keys():
+            if ".time_" in k:
+                tensors[k] = tensors[k].squeeze()
+            tensors[k] = np.float32(tensors[k])
 
         n_embd = int(tensors["ln_out.weight"].shape[0])
         n_layer = 0
@@ -157,7 +157,9 @@ if __name__ == "__main__":
 
     prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
 
-    with shelve.open(f"__pycache__/rwkv.{model.n_embd}-{model.n_layer}.prompt_cache.shelf") as db:
+    with shelve.open(
+        f"__pycache__/rwkv.{model.n_embd}-{model.n_layer}.prompt_cache.shelf"
+    ) as db:
         try:
             probs, state = db[prompt]
         except KeyError:
