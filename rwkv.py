@@ -144,19 +144,20 @@ def sample_probs(probs, temperature=1.0, top_p=0.85):
 
 
 if __name__ == "__main__":
-    import shelve
+    import argparse, shelve
 
-    # converted using `convert.py` in this repo
-    MODEL_FILE = "RWKV-4-Pile-430M-20220808-8066.safetensors"
+    parser = argparse.ArgumentParser(prog="rwkv.py")
+    parser.add_argument("model_file", help="model file in safetensors format")
+    args = parser.parse_args()
 
-    model = Model.load_safetensors(MODEL_FILE)
+    model = Model.load_safetensors(args.model_file)
 
     # Available at https://github.com/BlinkDL/ChatRWKV/blob/main/20B_tokenizer.json
     tokenizer = Tokenizer.from_file("20B_tokenizer.json")
 
     prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
 
-    with shelve.open("__pycache__/rwkv.prompt_cache.shelf") as db:
+    with shelve.open(f"__pycache__/rwkv.{model.n_embd}-{model.n_layer}.prompt_cache.shelf") as db:
         try:
             probs, state = db[prompt]
         except KeyError:
