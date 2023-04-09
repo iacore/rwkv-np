@@ -52,12 +52,12 @@ class Model(NamedTuple):
     def load_safetensors(file: str) -> "Model":
         from safetensors import safe_open
 
-        tensors_safe = safe_open(file, "numpy")
         tensors = {}
-        for k in tqdm(tensors_safe.keys(), desc="Loading model"):
-            tensors[k] = tensors_safe.get_tensor(k)
-            if ".time_" in k:
-                tensors[k] = tensors[k].squeeze()
+        with safe_open(file, "numpy") as tensors_safe:
+            for k in tqdm(tensors_safe.keys(), desc="Loading model"):
+                tensors[k] = tensors_safe.get_tensor(k)
+                if ".time_" in k:
+                    tensors[k] = tensors[k].squeeze()
 
         n_embd = int(tensors["ln_out.weight"].shape[0])
         n_layer = 0
@@ -144,6 +144,8 @@ def sample_probs(probs, temperature=1.0, top_p=0.85):
 
 
 if __name__ == "__main__":
+    import shelve
+
     # converted using `convert.py` in this repo
     MODEL_FILE = "RWKV-4-Pile-430M-20220808-8066.safetensors"
 
@@ -154,9 +156,14 @@ if __name__ == "__main__":
 
     prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
 
-    state = np.zeros((model.n_layer, 4, model.n_embd), dtype=np.float32)
-    for token in tqdm(tokenizer.encode(prompt).ids, desc="Feeding prompt"):
-        probs, state = RWKV(model, token, state)
+    with shelve.open("__pycache__/rwkv.prompt_cache.shelf") as db:
+        try:
+            probs, state = db[prompt]
+        except KeyError:
+            state = np.zeros((model.n_layer, 4, model.n_embd), dtype=np.float32)
+            for token in tqdm(tokenizer.encode(prompt).ids, desc="Feeding prompt"):
+                probs, state = RWKV(model, token, state)
+            db[prompt] = probs, state
 
     print(prompt, end="")
     while True:
