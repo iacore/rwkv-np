@@ -1,5 +1,0 @@
-scipy
-tokenizers
-tqdm
-numba
-safetensors
