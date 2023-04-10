@@ -2,5 +2,6 @@
 *.pth
 
 __pycache__/
+.pdm-python
 
 .vscode/
