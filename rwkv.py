@@ -3,8 +3,10 @@ import numba
 from tqdm import tqdm
 from tokenizers import Tokenizer
 
-# def trace_shape(*args):
-#     print("trace_shape", [arg.shape for arg in args])
+
+def trace_shape(*args):
+    print("trace_shape", [arg.shape for arg in args])
+
 
 jit = numba.jit(nopython=True, cache=True)
 
@@ -23,11 +25,14 @@ def time_mixing(
     v = Wv @ (x * mix_v + last_x * (1 - mix_v))
     r = Wr @ (x * mix_r + last_x * (1 - mix_r))
 
-    wkv = (last_num + exp(bonus + k) * v) / (last_den + exp(bonus + k))
+    common_0 = exp(bonus + k)
+    wkv = (last_num + common_0 * v) / (last_den + common_0)
     rwkv = sigmoid(r) * wkv
 
-    num = exp(-exp(decay)) * last_num + exp(k) * v
-    den = exp(-exp(decay)) * last_den + exp(k)
+    common_1 = exp(-exp(decay))
+    common_2 = exp(k)
+    num = common_1 * last_num + common_2 * v
+    den = common_1 * last_den + common_2
 
     return Wout @ rwkv, (x, num, den)
 
