@@ -1,5 +1,7 @@
 `rwkv.py` is mostly copied from https://johanwind.github.io/2023/03/23/rwkv_details.html
 
+You can install this by running `pip install -e .` inside this repo.
+
 ## Prepare the model
 
 ```
