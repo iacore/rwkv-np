@@ -1,12 +1,15 @@
 <script lang="ts">
 import { onMount } from "svelte"
 import { API_AUTHORITY } from "./lib/api"
+import { encode, decode } from "@msgpack/msgpack"
+
 let messages = []
 
 onMount(() => {
   let ws = new WebSocket(API_AUTHORITY + '/ws')
-  ws.onmessage = (ev) => {
-    messages = [...messages, String(ev.data)]
+  ws.onmessage = async (ev) => {
+    let data = await ev.data.arrayBuffer() 
+    messages = [...messages, decode(data)]
   }
 })
 </script>

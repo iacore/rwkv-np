@@ -1,5 +1,8 @@
+from rwkv import Model, Tokenizer
+
 from flask import Flask
 from flask_sock import Sock
+import umsgpack
 
 app = Flask(__name__)
 sock = Sock(app)
@@ -10,4 +13,4 @@ def hello_world():
 
 @sock.route('/ws')
 def echo(ws):
-    ws.send("Hello")
+    ws.send(umsgpack.packb("Hello"))
