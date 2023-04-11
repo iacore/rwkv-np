@@ -41,6 +41,7 @@ def time_mixing(
 def channel_mixing(x, last_x, mix_k, mix_r, Wk, Wr, Wv):
     k = Wk @ (x * mix_k + last_x * (1 - mix_k))
     r = Wr @ (x * mix_r + last_x * (1 - mix_r))
+    print("vk", Wk.shape, x.shape)
     vk = Wv @ np.maximum(k, 0) ** 2
     return sigmoid(r) * vk, x
 
