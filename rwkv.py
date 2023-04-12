@@ -1,11 +1,16 @@
+import logging
 import numpy as np
 import numba
 from tqdm import tqdm
 from tokenizers import Tokenizer
 
 
+logger = logging.getLogger(name="rwkv")
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.FileHandler("__pycache__/rwkv.log"))
+
 def trace_shape(*args):
-    print("trace_shape", [arg.shape for arg in args])
+    logger.debug("trace_shape", [arg.shape for arg in args])
 
 
 jit = numba.jit(nopython=True, cache=True)
@@ -41,7 +46,6 @@ def time_mixing(
 def channel_mixing(x, last_x, mix_k, mix_r, Wk, Wr, Wv):
     k = Wk @ (x * mix_k + last_x * (1 - mix_k))
     r = Wr @ (x * mix_r + last_x * (1 - mix_r))
-    print("vk", Wk.shape, x.shape)
     vk = Wv @ np.maximum(k, 0) ** 2
     return sigmoid(r) * vk, x
 
@@ -116,23 +120,34 @@ def RWKV(model: Model, token, state):
             ]
         ]
 
+    logger.debug(f"token {token=}")
+
     x = p("emb.weight")[token]
+    logger.debug(f"after emb {x=}")
     x = layer_norm(x, *p_ln("blocks.0.ln0"))
+    logger.debug(f"after ln_in {x=}")
 
     for i in range(model.n_layer):
         x_ = layer_norm(x, *p_ln(f"blocks.{i}.ln1"))
+        logger.debug(f"after block.ln1 {i=} {x_=}")
         dx, state[i][:3] = time_mixing(x_, *state[i][:3], *p_att(f"blocks.{i}.att"))
         x = x + dx
+        logger.debug(f"after att {i=} {x=}")
 
         x_ = layer_norm(x, *p_ln(f"blocks.{i}.ln2"))
+        logger.debug(f"after block.ln2 {i=} {x_=}")
         dx, state[i][3] = channel_mixing(x_, state[i][3], *p_ffn(f"blocks.{i}.ffn"))
         x = x + dx
+        logger.debug(f"after ffn {i=} {x=}")
 
     x = layer_norm(x, *p_ln("ln_out"))
+    logger.debug(f"after ln_out {x=}")
     x = p("head.weight") @ x
+    logger.debug(f"after head {x=}")
 
     e_x = exp(x - np.max(x))
     probs = e_x / e_x.sum()  # Softmax of x
+    logger.debug(f"after softmax {probs=}")
 
     return probs, state
 
@@ -154,6 +169,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog="rwkv.py")
     parser.add_argument("model_file", help="model file in safetensors format")
+    parser.add_argument("--no-cache", action='store_true', help="disable cache")
     args = parser.parse_args()
 
     model = Model.load_safetensors(args.model_file)
@@ -163,16 +179,25 @@ if __name__ == "__main__":
 
     prompt = "In a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese."
 
-    with shelve.open(
-        f"__pycache__/rwkv.{model.n_embd}-{model.n_layer}.prompt_cache.shelf"
-    ) as db:
-        try:
-            probs, state = db[prompt]
-        except KeyError:
-            state = np.zeros((model.n_layer, 4, model.n_embd), dtype=np.float32)
-            for token in tqdm(tokenizer.encode(prompt).ids, desc="Feeding prompt"):
-                probs, state = RWKV(model, token, state)
-            db[prompt] = probs, state
+    probs, state = None, None
+    
+    def feed_prompt(prompt: str):
+        global probs, state
+        state = np.zeros((model.n_layer, 4, model.n_embd), dtype=np.float32)
+        for token in tqdm(tokenizer.encode(prompt).ids, desc="Feeding prompt"):
+            probs, state = RWKV(model, token, state)
+
+    if args.no_cache:
+        feed_prompt(prompt)
+    else:
+        with shelve.open(
+            f"__pycache__/rwkv.{model.n_embd}-{model.n_layer}.prompt_cache.shelf"
+        ) as db:
+            try:
+                probs, state = db[prompt]
+            except KeyError:
+                feed_prompt(prompt)
+                db[prompt] = probs, state
 
     print(prompt, end="")
     while True:
