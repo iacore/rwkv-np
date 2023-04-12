@@ -7,7 +7,7 @@ from tokenizers import Tokenizer
 
 logger = logging.getLogger(name="rwkv")
 logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.FileHandler("__pycache__/rwkv.log"))
+logger.addHandler(logging.FileHandler("__pycache__/rwkv.log", mode="w"))
 
 def trace_shape(*args):
     logger.debug("trace_shape", [arg.shape for arg in args])
@@ -147,7 +147,15 @@ def RWKV(model: Model, token, state):
 
     e_x = exp(x - np.max(x))
     probs = e_x / e_x.sum()  # Softmax of x
-    logger.debug(f"after softmax {probs=}")
+    
+    minids = np.argsort(probs, axis=0)
+    L = minids.shape[0]
+    max10_ids = []
+    for i, x in enumerate(minids):
+        if x > L - 10:
+            max10_ids.append(i)
+
+    logger.debug(f"after softmax {probs=} max10_ids={max10_ids}")
 
     return probs, state
 
