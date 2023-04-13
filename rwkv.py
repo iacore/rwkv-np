@@ -11,7 +11,16 @@ def trace_shape(*args):
 jit = numba.jit(nopython=True, cache=True)
 
 exp = np.exp
-layer_norm = jit(lambda x, w, b: (x - np.mean(x)) / np.std(x) * w + b)
+
+# zero also works
+eps_std = np.array(0.000009999999747378752, dtype=np.float32)
+
+@jit
+def layer_norm(x, w, b):
+    xee2 = x - np.mean(x)
+    x2 = np.sqrt(np.mean(xee2*xee2) + eps_std)
+    return (xee2/x2) * w + b
+
 sigmoid = jit(lambda x: 1 / (1 + exp(-x)))
 
 
